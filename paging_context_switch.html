@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>프로세스 컨텍스트 스위칭과 페이징</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,'Pretendard','Noto Sans KR',sans-serif;background:#f8f7f4;color:#2c2c2a;display:flex;justify-content:center;padding:32px 16px;min-height:100vh}
+.container{max-width:720px;width:100%;background:#fff;border-radius:16px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,0.08)}
+h1{font-size:18px;font-weight:600;margin-bottom:4px}
+.subtitle{font-size:13px;color:#888;margin-bottom:24px}
+.controls{display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+.proc-btn{padding:8px 20px;border-radius:8px;border:1.5px solid #d3d1c7;background:#fff;color:#2c2c2a;cursor:pointer;font-size:14px;font-family:inherit;font-weight:500;transition:all .2s}
+.proc-btn:hover{border-color:#888}
+.proc-btn.active-a{background:#E6F1FB;border-color:#378ADD;color:#0C447C}
+.proc-btn.active-b{background:#E1F5EE;border-color:#1D9E75;color:#085041}
+.status{font-size:12px;color:#888;margin-left:4px}
+.diagram-wrap{width:100%;overflow-x:auto}
+.cost-box{padding:10px 14px;border-radius:8px;font-size:13px;transition:all .4s;opacity:0;transform:translateY(8px);margin-top:8px;line-height:1.5}
+.cost-box.show{opacity:1;transform:translateY(0)}
+.cost-1{background:#FFF8E1;color:#854F0B;border:1px solid #FAC775}
+.cost-2{background:#FCEBEB;color:#791F1F;border:1px solid #F09595}
+.cost-3{background:#FCEBEB;color:#791F1F;border:1px solid #F09595}
+.legend{display:flex;gap:16px;margin-top:20px;padding-top:16px;border-top:1px solid #eee;font-size:12px;color:#888;flex-wrap:wrap}
+.legend-item{display:flex;align-items:center;gap:6px}
+.legend-dot{width:12px;height:12px;border-radius:3px}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>프로세스 컨텍스트 스위칭과 페이징</h1>
+<p class="subtitle">같은 논리 주소(페이지)가 프로세스마다 다른 물리 주소(프레임)에 매핑됩니다</p>
+
+<div class="controls">
+  <button class="proc-btn active-a" id="btn-a" onclick="switchTo('a')">프로세스 A</button>
+  <button class="proc-btn" id="btn-b" onclick="switchTo('b')">프로세스 B</button>
+  <span class="status" id="status-text">현재: 프로세스 A 실행 중</span>
+</div>
+
+<div class="diagram-wrap">
+<svg width="100%" viewBox="0 0 680 420" style="max-width:680px">
+
+<text font-family="inherit" font-size="14" font-weight="600" fill="#2c2c2a" x="105" y="22" text-anchor="middle">논리적 주소</text>
+<text font-family="inherit" font-size="14" font-weight="600" fill="#2c2c2a" x="340" y="22" text-anchor="middle">매핑 테이블</text>
+<text font-family="inherit" font-size="14" font-weight="600" fill="#2c2c2a" x="565" y="22" text-anchor="middle">물리적 주소</text>
+<text font-family="inherit" font-size="11" fill="#888" x="105" y="38" text-anchor="middle">(페이지)</text>
+<text font-family="inherit" font-size="11" fill="#888" x="340" y="38" text-anchor="middle">(페이지 테이블)</text>
+<text font-family="inherit" font-size="11" fill="#888" x="565" y="38" text-anchor="middle">(프레임)</text>
+
+<!-- Logical address -->
+<rect x="40" y="50" width="130" height="220" rx="4" fill="none" stroke="#b4b2a9" stroke-width="0.5"/>
+<line x1="40" y1="94" x2="170" y2="94" stroke="#d3d1c7" stroke-width="0.5"/>
+<line x1="40" y1="138" x2="170" y2="138" stroke="#d3d1c7" stroke-width="0.5"/>
+<line x1="40" y1="182" x2="170" y2="182" stroke="#d3d1c7" stroke-width="0.5"/>
+<line x1="40" y1="226" x2="170" y2="226" stroke="#d3d1c7" stroke-width="0.5"/>
+<text font-family="inherit" font-size="12" fill="#5f5e5a" x="105" y="76" text-anchor="middle" dominant-baseline="central">[0]</text>
+<text font-family="inherit" font-size="12" fill="#5f5e5a" x="105" y="120" text-anchor="middle" dominant-baseline="central">[1]</text>
+<text font-family="inherit" font-size="12" fill="#5f5e5a" x="105" y="164" text-anchor="middle" dominant-baseline="central">[2]</text>
+<text font-family="inherit" font-size="12" fill="#5f5e5a" x="105" y="208" text-anchor="middle" dominant-baseline="central">[3]</text>
+<text font-family="inherit" font-size="12" fill="#5f5e5a" x="105" y="252" text-anchor="middle" dominant-baseline="central">[4]</text>
+
+<!-- Page table A -->
+<g id="pt-a">
+  <rect x="270" y="50" width="140" height="220" rx="4" fill="none" stroke="#378ADD" stroke-width="1"/>
+  <rect x="270" y="50" width="140" height="44" fill="#E6F1FB" stroke="#378ADD" stroke-width="0.5"/>
+  <rect x="270" y="94" width="140" height="44" fill="#E6F1FB" stroke="#378ADD" stroke-width="0.5"/>
+  <rect x="270" y="138" width="140" height="44" fill="#E6F1FB" stroke="#378ADD" stroke-width="0.5"/>
+  <rect x="270" y="182" width="140" height="44" fill="#E6F1FB" stroke="#378ADD" stroke-width="0.5"/>
+  <rect x="270" y="226" width="140" height="44" fill="#E6F1FB" stroke="#378ADD" stroke-width="0.5"/>
+  <text font-family="inherit" font-size="12" fill="#0C447C" x="340" y="76" text-anchor="middle" dominant-baseline="central">→ 프레임 3</text>
+  <text font-family="inherit" font-size="12" fill="#0C447C" x="340" y="120" text-anchor="middle" dominant-baseline="central">→ 프레임 7</text>
+  <text font-family="inherit" font-size="12" fill="#0C447C" x="340" y="164" text-anchor="middle" dominant-baseline="central">→ 프레임 1</text>
+  <text font-family="inherit" font-size="12" fill="#0C447C" x="340" y="208" text-anchor="middle" dominant-baseline="central">→ 프레임 5</text>
+  <text font-family="inherit" font-size="12" fill="#0C447C" x="340" y="252" text-anchor="middle" dominant-baseline="central">→ 프레임 9</text>
+</g>
+
+<!-- Page table B -->
+<g id="pt-b" style="display:none">
+  <rect x="270" y="50" width="140" height="220" rx="4" fill="none" stroke="#1D9E75" stroke-width="1"/>
+  <rect x="270" y="50" width="140" height="44" fill="#E1F5EE" stroke="#1D9E75" stroke-width="0.5"/>
+  <rect x="270" y="94" width="140" height="44" fill="#E1F5EE" stroke="#1D9E75" stroke-width="0.5"/>
+  <rect x="270" y="138" width="140" height="44" fill="#E1F5EE" stroke="#1D9E75" stroke-width="0.5"/>
+  <rect x="270" y="182" width="140" height="44" fill="#E1F5EE" stroke="#1D9E75" stroke-width="0.5"/>
+  <rect x="270" y="226" width="140" height="44" fill="#E1F5EE" stroke="#1D9E75" stroke-width="0.5"/>
+  <text font-family="inherit" font-size="12" fill="#085041" x="340" y="76" text-anchor="middle" dominant-baseline="central">→ 프레임 2</text>
+  <text font-family="inherit" font-size="12" fill="#085041" x="340" y="120" text-anchor="middle" dominant-baseline="central">→ 프레임 8</text>
+  <text font-family="inherit" font-size="12" fill="#085041" x="340" y="164" text-anchor="middle" dominant-baseline="central">→ 프레임 4</text>
+  <text font-family="inherit" font-size="12" fill="#085041" x="340" y="208" text-anchor="middle" dominant-baseline="central">→ 프레임 6</text>
+  <text font-family="inherit" font-size="12" fill="#085041" x="340" y="252" text-anchor="middle" dominant-baseline="central">→ 프레임 0</text>
+</g>
+
+<!-- Physical memory -->
+<rect x="500" y="50" width="130" height="264" rx="4" fill="none" stroke="#b4b2a9" stroke-width="0.5"/>
+<line x1="500" y1="76.4" x2="630" y2="76.4" stroke="#d3d1c7" stroke-width="0.5"/>
+<line x1="500" y1="102.8" x2="630" y2="102.8" stroke="#d3d1c7" stroke-width="0.5"/>
+<line x1="500" y1="129.2" x2="630" y2="129.2" stroke="#d3d1c7" stroke-width="0.5"/>
+<line x1="500" y1="155.6" x2="630" y2="155.6" stroke="#d3d1c7" stroke-width="0.5"/>
+<line x1="500" y1="182" x2="630" y2="182" stroke="#d3d1c7" stroke-width="0.5"/>
+<line x1="500" y1="208.4" x2="630" y2="208.4" stroke="#d3d1c7" stroke-width="0.5"/>
+<line x1="500" y1="234.8" x2="630" y2="234.8" stroke="#d3d1c7" stroke-width="0.5"/>
+<line x1="500" y1="261.2" x2="630" y2="261.2" stroke="#d3d1c7" stroke-width="0.5"/>
+<line x1="500" y1="287.6" x2="630" y2="287.6" stroke="#d3d1c7" stroke-width="0.5"/>
+<text font-family="inherit" font-size="11" fill="#888" x="565" y="66" text-anchor="middle" dominant-baseline="central">0</text>
+<text font-family="inherit" font-size="11" fill="#888" x="565" y="92" text-anchor="middle" dominant-baseline="central">1</text>
+<text font-family="inherit" font-size="11" fill="#888" x="565" y="118" text-anchor="middle" dominant-baseline="central">2</text>
+<text font-family="inherit" font-size="11" fill="#888" x="565" y="145" text-anchor="middle" dominant-baseline="central">3</text>
+<text font-family="inherit" font-size="11" fill="#888" x="565" y="171" text-anchor="middle" dominant-baseline="central">4</text>
+<text font-family="inherit" font-size="11" fill="#888" x="565" y="197" text-anchor="middle" dominant-baseline="central">5</text>
+<text font-family="inherit" font-size="11" fill="#888" x="565" y="223" text-anchor="middle" dominant-baseline="central">6</text>
+<text font-family="inherit" font-size="11" fill="#888" x="565" y="250" text-anchor="middle" dominant-baseline="central">7</text>
+<text font-family="inherit" font-size="11" fill="#888" x="565" y="276" text-anchor="middle" dominant-baseline="central">8</text>
+<text font-family="inherit" font-size="11" fill="#888" x="565" y="302" text-anchor="middle" dominant-baseline="central">9</text>
+
+<!-- Highlights A -->
+<g id="hl-a">
+  <rect x="501" y="129.2" width="128" height="26.4" fill="#378ADD" opacity="0.12"/>
+  <rect x="501" y="234.8" width="128" height="26.4" fill="#378ADD" opacity="0.12"/>
+  <rect x="501" y="76.4" width="128" height="26.4" fill="#378ADD" opacity="0.08"/>
+  <rect x="501" y="182" width="128" height="26.4" fill="#378ADD" opacity="0.08"/>
+  <rect x="501" y="287.6" width="128" height="26.4" fill="#378ADD" opacity="0.08"/>
+</g>
+<!-- Highlights B -->
+<g id="hl-b" style="display:none">
+  <rect x="501" y="102.8" width="128" height="26.4" fill="#1D9E75" opacity="0.12"/>
+  <rect x="501" y="261.2" width="128" height="26.4" fill="#1D9E75" opacity="0.12"/>
+  <rect x="501" y="155.6" width="128" height="26.4" fill="#1D9E75" opacity="0.08"/>
+  <rect x="501" y="208.4" width="128" height="26.4" fill="#1D9E75" opacity="0.08"/>
+  <rect x="501" y="50" width="128" height="26.4" fill="#1D9E75" opacity="0.08"/>
+</g>
+
+<!-- Mapping lines A -->
+<g id="lines-a">
+  <line x1="170" y1="72" x2="270" y2="72" stroke="#378ADD" stroke-width="1"/>
+  <line x1="410" y1="72" x2="500" y2="145" stroke="#378ADD" stroke-width="1"/>
+  <line x1="170" y1="116" x2="270" y2="116" stroke="#378ADD" stroke-width="1"/>
+  <line x1="410" y1="116" x2="500" y2="250" stroke="#378ADD" stroke-width="1"/>
+</g>
+<!-- Mapping lines B -->
+<g id="lines-b" style="display:none">
+  <line x1="170" y1="72" x2="270" y2="72" stroke="#1D9E75" stroke-width="1"/>
+  <line x1="410" y1="72" x2="500" y2="118" stroke="#1D9E75" stroke-width="1"/>
+  <line x1="170" y1="116" x2="270" y2="116" stroke="#1D9E75" stroke-width="1"/>
+  <line x1="410" y1="116" x2="500" y2="276" stroke="#1D9E75" stroke-width="1"/>
+</g>
+
+<!-- TLB -->
+<rect x="220" y="300" width="240" height="44" rx="8" fill="#F1EFE8" stroke="#b4b2a9" stroke-width="0.5"/>
+<text font-family="inherit" font-size="13" font-weight="600" fill="#2c2c2a" x="340" y="318" text-anchor="middle" dominant-baseline="central">TLB (CPU 내부 캐시)</text>
+<text font-family="inherit" font-size="11" fill="#888" x="340" y="336" text-anchor="middle" dominant-baseline="central" id="tlb-status">A의 매핑 캐시됨 ✓</text>
+
+<!-- Note -->
+<text font-family="inherit" font-size="11" fill="#888" x="340" y="370" text-anchor="middle">페이지 단위 == 프레임 단위</text>
+<text font-family="inherit" font-size="11" fill="#888" x="340" y="386" text-anchor="middle">같은 논리 주소 [0]이 프로세스마다 다른 프레임에 매핑됨</text>
+<text font-family="inherit" font-size="11" fill="#888" x="340" y="402" text-anchor="middle">→ 전환 시 매핑 테이블 교체 + TLB 플러시 필요</text>
+
+</svg>
+</div>
+
+<div id="cost-display">
+  <div class="cost-box cost-1" id="cost-1">
+    <strong>1단계</strong> CR3 레지스터 교체 — 페이지 테이블 포인터를 새 프로세스 것으로 변경
+  </div>
+  <div class="cost-box cost-2" id="cost-2">
+    <strong>2단계</strong> TLB 전체 플러시 — CPU에 캐시된 이전 프로세스의 매핑 정보가 모두 무효화됨
+  </div>
+  <div class="cost-box cost-3" id="cost-3">
+    <strong>3단계</strong> TLB 미스 연속 발생 — 새 프로세스의 매핑을 매번 메모리에서 읽어와야 함 (수십~수백 사이클)
+  </div>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#378ADD"></div>프로세스 A 매핑</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#1D9E75"></div>프로세스 B 매핑</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#F1EFE8;border:1px solid #b4b2a9"></div>TLB (SRAM 캐시)</div>
+</div>
+
+</div>
+
+<script>
+let current = 'a';
+function switchTo(target) {
+  if (target === current) return;
+  current = target;
+
+  document.getElementById('btn-a').className = 'proc-btn' + (target==='a'?' active-a':'');
+  document.getElementById('btn-b').className = 'proc-btn' + (target==='b'?' active-b':'');
+
+  document.getElementById('cost-1').classList.remove('show');
+  document.getElementById('cost-2').classList.remove('show');
+  document.getElementById('cost-3').classList.remove('show');
+
+  document.getElementById('pt-a').style.display = 'none';
+  document.getElementById('pt-b').style.display = 'none';
+  document.getElementById('lines-a').style.display = 'none';
+  document.getElementById('lines-b').style.display = 'none';
+  document.getElementById('hl-a').style.display = 'none';
+  document.getElementById('hl-b').style.display = 'none';
+
+  document.getElementById('status-text').textContent = '전환 중...';
+  document.getElementById('tlb-status').textContent = '플러시 중...';
+
+  setTimeout(function() {
+    document.getElementById('cost-1').classList.add('show');
+    document.getElementById('status-text').textContent = 'CR3 레지스터 교체 중...';
+  }, 300);
+
+  setTimeout(function() {
+    document.getElementById('pt-'+target).style.display = '';
+    document.getElementById('cost-2').classList.add('show');
+    document.getElementById('tlb-status').textContent = '비어 있음 (플러시됨)';
+  }, 900);
+
+  setTimeout(function() {
+    document.getElementById('lines-'+target).style.display = '';
+    document.getElementById('hl-'+target).style.display = '';
+    document.getElementById('cost-3').classList.add('show');
+    document.getElementById('status-text').textContent = '현재: 프로세스 ' + target.toUpperCase() + ' 실행 중';
+    document.getElementById('tlb-status').textContent = target.toUpperCase() + '의 매핑 다시 캐싱 중...';
+  }, 1500);
+
+  setTimeout(function() {
+    document.getElementById('tlb-status').textContent = target.toUpperCase() + '의 매핑 캐시됨 ✓';
+  }, 2200);
+}
+</script>
+</body>
+</html>
